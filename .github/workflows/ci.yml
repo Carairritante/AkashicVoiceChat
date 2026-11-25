@@ -1,0 +1,74 @@
+name: Akashic Voice CI
+on:
+  push:
+    branches: [correcoes]
+  pull_request:
+    branches: [correcoes]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: akashic-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Java 8 compiler
+        id: java8
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '8'
+      - name: Java 25 for Gradle
+        id: java25
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+      - name: Build and verify mod JAR
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --no-configuration-cache --console=plain build -Dorg.gradle.java.installations.paths="${{ steps.java8.outputs.path }},${{ steps.java25.outputs.path }}"
+      - name: Prepare playable JAR and SHA-256
+        run: |
+          mkdir -p dist
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+          libs = Path('build/libs')
+          candidates = [
+              p for p in sorted(libs.glob('akashicvoice-*.jar'))
+              if not any(p.name.endswith(s) for s in ('-dev.jar', '-sources.jar', '-preshadow.jar', '-javadoc.jar'))
+          ]
+          if not candidates:
+              raise SystemExit('No playable akashicvoice JAR found in build/libs: ' + str([p.name for p in libs.glob('*.jar')]))
+          jar = candidates[-1]
+          shutil.copy2(jar, Path('dist') / jar.name)
+          print('Selected playable JAR:', jar.name)
+          PY
+          cd dist
+          sha256sum *.jar > SHA256SUMS
+          printf '### Build artifacts\n\n`	ext\n' >> "$GITHUB_STEP_SUMMARY"
+          cat SHA256SUMS >> "$GITHUB_STEP_SUMMARY"
+          printf '`\n' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload JAR without ZIP
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          path: dist/*.jar
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload checksum without ZIP
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          path: dist/SHA256SUMS
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
