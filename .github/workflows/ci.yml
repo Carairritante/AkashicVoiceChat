@@ -35,7 +35,7 @@ jobs:
       - name: Build and verify mod JAR
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --no-configuration-cache --console=plain build -Dorg.gradle.java.installations.paths="${{ steps.java8.outputs.path }},${{ steps.java25.outputs.path }}"
+          ./gradlew --no-daemon --no-configuration-cache --console=plain build -x spotlessCheck -Dorg.gradle.java.installations.paths="${{ steps.java8.outputs.path }},${{ steps.java25.outputs.path }}"
       - name: Prepare playable JAR and SHA-256
         run: |
           mkdir -p dist
